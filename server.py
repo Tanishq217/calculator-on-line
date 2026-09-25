@@ -1,4 +1,5 @@
 import socket
+import urllib.parse
 
 def handle_client(client_socket, client_address):
     buffer = b""
@@ -57,9 +58,53 @@ def handle_client(client_socket, client_address):
             body = buffer[:content_length]
             buffer = buffer[content_length:]
             
-            # dummy response for now
-            response = f"{version} 200 OK\r\nContent-Length: 2\r\n\r\nOK"
-            client_socket.sendall(response.encode('utf-8'))
+            # check method
+            if method != "GET":
+                resp = f"{version} 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n"
+                client_socket.sendall(resp.encode('utf-8'))
+                continue
+                
+            # routing
+            parsed_url = urllib.parse.urlparse(path_with_query)
+            path = parsed_url.path
+            query = urllib.parse.parse_qs(parsed_url.query)
+            
+            valid_routes = ['/add', '/sub', '/mul', '/div']
+            
+            if path not in valid_routes:
+                resp = f"{version} 404 Not Found\r\nContent-Length: 0\r\n\r\n"
+                client_socket.sendall(resp.encode('utf-8'))
+                continue
+                
+            # extract a and b
+            try:
+                a = int(query.get('a', [''])[0])
+                b = int(query.get('b', [''])[0])
+            except (ValueError, IndexError):
+                # if missing or not an int
+                resp = f"{version} 400 Bad Request\r\nContent-Length: 0\r\n\r\n"
+                client_socket.sendall(resp.encode('utf-8'))
+                continue
+                
+            # do math
+            result = 0
+            if path == '/add':
+                result = a + b
+            elif path == '/sub':
+                result = a - b
+            elif path == '/mul':
+                result = a * b
+            elif path == '/div':
+                if b == 0:
+                    resp = f"{version} 400 Bad Request\r\nContent-Length: 0\r\n\r\n"
+                    client_socket.sendall(resp.encode('utf-8'))
+                    continue
+                result = int(a / b) # casting to int as per assignment examples
+            
+            # send back 200 OK
+            result_str = str(result)
+            resp = f"{version} 200 OK\r\nContent-Length: {len(result_str)}\r\n\r\n{result_str}"
+            client_socket.sendall(resp.encode('utf-8'))
             
             # check if connection should be closed
             if headers.get("connection", "").lower() == "close":
